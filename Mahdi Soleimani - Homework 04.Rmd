@@ -1,0 +1,1607 @@
+---
+title: "Mahdi Soleimani - Homework 04"
+output: pdf_document
+header-includes:
+   - \usepackage{booktabs}
+   - \usepackage{xcolor}
+   - \usepackage{float}
+---
+
+
+
+```{r, include=FALSE}
+list.of.packages <- c("tidyverse", "haven", "knitr","broom",
+                      "stargazer", "ggplot2","sos", "jtools","psych",
+                      "lattice", "kableExtra", "scales","plyr","reshape",
+                      "gmodels","laeken", "ggplot2", "naniar","ggpubr",                                   "descr","reshape","tinytex", "spatstat","splot")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages, repos = "http://cran.us.r-project.org")
+
+options(tinytex.verbose = TRUE)
+invisible(lapply(list.of.packages, library, character.only = TRUE))
+
+
+cv <- read_stata("civ_87_08.dta")
+
+```
+
+
+
+# Part 1: Explanations
+
+## 1 Sampling and outliers (3 points)
+
+**(a)** A few problems arises. First of all, it is difficult to be conclusive when analyzing over time.Since the same households are not followed over time, we cannot make sure whether changes in the viariable is systematic or random. Secondly, some variables by definition change over time. If we do not follow the same household, it becomes difficult to fully understand the impact of the variable. For instance, age influence many behaviors. However, in the repeated cross-section data, we cannot see how one younng individual changed his behavior(for instance, savings) over time as he got older. Thirdly, we cannot fully determine the extent to which exogenuous shocks (civil war, earthquake, etc) influence variables.If we follow the same household before and after a shock, then it becomes much easier to understand their relationship.(For more information, see https://www.ukdataservice.ac.uk/media/455362/changeovertime.pdf)
+
+
+**(b)** Outlires on both sides, that is, the very poor and the very reach should be omitted from the data set. First of all, there are measurement issues with the outliers. For instance, it is hard to capture all the sources of income or the entire amount of consumption. Also, the reach tend to understate and the poor tend to overstate, maybe beause they want to show themselves closeer to average. Secondly, most inequality measures are sensitive to outliers. Therefore, if the mean of the population has to be estimated from the sample, we could have problems. In general, inequality increases as measurement errors increase. \footnote{ This fact is shown in Cowell, F. and Victoria-Feser, M.P., 1993. Robustness properties of inequality measures: The influence function and the principle of transfers.}
+
+
+**(c)** In order to obtain consumption per household, we devide total consumption ("constot" in the data set) by household size ("hhsize").
+
+
+```{r, include=FALSE}
+## 1 Sampling and outliers (3 points)
+
+cv$lconspc = log(cv$conspc)
+# or
+cv$consindv <- cv$constot/cv$hhsize
+cv$consindvlg <- log(cv$consindv)
+```
+
+**(d)** The distribution of income is skewed to the right. For instance see the graphs in 2008. Taking the log of consumption per capita will increase the space between variables that are low and decrease the space between variables that are high. As a result, it will change the distribution into normal (approximately. see page 4). Therefore if we exclude values that are $3\sigma$ away from the median, given the properties of the normal distribution, we would end up excluding only $1\%$ of the data. Therefore, we will not lose many observations. This a statistically robust correction. 121 observations were excluded. The reason we do not use the weights is that we want to exclude the outliers from the sample. The weights, however, are related to the poulation.
+
+
+``` {r, include=FALSE}
+####(d)  
+#### no use of weights.
+#1987
+med87 <- median(cv$consindvlg[cv$year==1987])
+#1998
+med98 <- median(cv$consindvlg[cv$year==1998])
+#2008
+med08 <- median(cv$consindvlg[cv$year==2008])
+
+
+#1987
+sd87 <- sd(cv$consindvlg[cv$year==1987])
+#1998
+sd98 <- sd(cv$consindvlg[cv$year==1998])
+#2008
+sd08 <- sd(cv$consindvlg[cv$year==2008])
+
+
+
+#1987
+cv87 <- subset(cv, year==1987)
+#check
+
+#1998
+cv98 <- subset(cv, year==1998)
+#check
+
+#2008
+cv08 <- subset(cv, year==2008)
+
+
+##identify the outliers in each data set
+
+#create a dummy (1:outlier)
+
+
+#1987
+cv87$outl <- ifelse(abs(cv87$consindvlg - med87) > 3*sd87, 1, 0)
+#1998
+cv98$outl <- ifelse(abs(cv98$consindvlg - med98) > 3*sd98, 1, 0)
+#2008
+cv08$outl <- ifelse(abs(cv08$consindvlg - med08) > 3*sd08, 1, 0)
+
+
+#1987
+cv87 <- subset(cv87, outl==0)
+#1998
+cv98 <- subset(cv98, outl==0)
+#2008
+cv08 <- subset(cv08, outl==0)
+
+
+##reatach the cleaned data sets to each other
+
+cvn <- rbind(cv87, cv98, cv08)
+
+#check
+identical(nrow(cvn), nrow(cv87) + nrow(cv98) + nrow(cv08))
+#TRUE, the number of rows in our new data set (cvn) is the the same as the sum of the three subsets which have no outliers. so we are good.
+nrow(cv) -nrow(cvn) #121 observations were excluded.
+
+```
+
+
+## 2 Consumer Price Index and Purchasing Power Parities (4 points)
+
+**(a)**
+A representative household has 4 members, is male-headed and whose head is a blue-collar worker; either self-employed outside agriculture or a farmer.
+
+
+In order to calculate the weighted average of the share of food expenditure, we do the following calculations. The first fraction is the definition(w is the weight of the household). However, we can use the percapita version of the variables, simply by multiplying by n. Also, we can multiply and divide household consumption per capita in the enumerator without changing anything. Now we have our desired weight: W=w.n.household consumption per capita.
+
+\[\frac{\sum_{hh}w.food\ expenditure }{\sum_{hh}w. household\ consumption}\]\= \[\frac{\sum_{hh} w.n.food\ expenditure\ per\ capita}{\sum_{hh}w.n. household\ consumption\ per\ capita}\]\= \[\frac{\sum_{hh} w.n.household\ consumption\ per\ capita.\ (\frac{food\ expenditure\ per\ capita }{household\ consumption\ per\ capita})}{\sum_{hh}w.n. household\ consumption\ per\ capita}\]\=\[\frac{\sum_{hh}W.\ share\ of\ food\ expenditure}{\sum_{hh}W}\]
+
+
+
+
+```{r, include=FALSE}
+
+#step 1:
+#identify the "representative hhs" (create a dummy): We have to pick a household of four whose head is male. He must be farmer or self-employed.
+
+cvn$rep <- ifelse(cvn$hhsize==4 & cvn$femalehead==0 & (cvn$work_farmer==1 | cvn$work_selfem==1), 1, 0)
+
+summary(cvn$rep) 
+#0.06511 are representative .
+
+#step 2:
+#share of food expenditure in the household consumption
+cvn$fd.share <- cvn$exp_food/cvn$constot
+
+
+#step 3:
+#Build a weight = number of people in the hh * the weight of the hh * consumption per capita of the hh
+
+cvn$new.weight <- cvn$hhsize * cvn$weight * cvn$conspc
+
+
+#step 4:weighted average of the share of food expenditure in different regions.
+
+##1987
+##for the north
+weighted.mean(cvn$fd.share[cvn$rep==1 & cvn$north==1 & cvn$year==1987], cvn$new.weight[cvn$rep==1 & cvn$north==1 & cvn$year==1987])
+#0.7164972
+##for the south
+weighted.mean(cvn$fd.share[cvn$rep==1 & cvn$north==0 & cvn$year==1987], cvn$new.weight[cvn$rep==1 &cvn$north==0 & cvn$year==1987])
+#0.6324358
+
+##1998
+##for the north
+weighted.mean(cvn$fd.share[cvn$rep==1 & cvn$north==1 & cvn$year==1998], cvn$new.weight[cvn$rep==1 & cvn$north==1 & cvn$year==1998])
+#0.7331989
+##for the south
+weighted.mean(cvn$fd.share[cvn$rep==1 & cvn$north==0 & cvn$year==1998], cvn$new.weight[cvn$rep==1 &cvn$north==0 & cvn$year==1998])
+#0.6608212
+
+##2008
+##for the north
+weighted.mean(cvn$fd.share[cvn$rep==1 & cvn$north==1 & cvn$year==2008], cvn$new.weight[cvn$rep==1 & cvn$north==1 & cvn$year==2008])
+#0.6053388
+##for the south
+weighted.mean(cvn$fd.share[cvn$rep==1 & cvn$north==0 & cvn$year==2008], cvn$new.weight[cvn$rep==1 &cvn$north==0 & cvn$year==2008])
+#0.5455348
+
+
+```
+
+**(b)** and **(c)**  
+When caculating the CPI, the Paasche index often understates the inflation whereas the Laspeyres index often exaggerates. As prices increase over time, people tend to adjust their baskets, i.e, they dcrease the quantity of the goods that went through a price increase. If we do not change the basket, as in Laspeyres, we end up with a higher index. On the other hand, since we only use quanity of time t in Paasche, we end up with a lower index. In our data, this true in 1998. Also, the CPI in the South is always greater than in the North.
+
+With regard to PPP, we have different results for the North and and the South because of price differences. This is because in different regions, people develop different preferences and different resources are available. As a result, calculating the prices for a given basket in each region will result in different indeces.The Fisher index is the geometric mean of Paasche and Laspeyres. Therefore, it is always between the two.
+
+
+``````{r, include=FALSE}
+#In our data, we have two groups of goods: food and non-food.
+# Let 1987 be the base year.
+
+
+#### Laspeyres :
+
+#Step1 (quanitity):
+
+#If we divide the total food expenditures by the average price of food or non-food, we get the quantity of consumption of the goods for each household. Then, we compute the mean. We only need to do this for 1987, according to the definition.
+
+##North:
+#food
+q0.food.tempNorth <- cvn$exp_food[cvn$year==1987 & cvn$north==1]/cvn$avprice_food[cvn$year==1987 & cvn$north==1]
+q0.fdN <- mean(q0.food.tempNorth)
+#non-food
+q0.nofood.tempNorth <- cvn$exp_othr[cvn$year==1987 & cvn$north==1]/cvn$avprice_othr[cvn$year==1987 & cvn$north==1]
+q0.nofdN <- mean(q0.nofood.tempNorth)
+
+##South:
+#food
+q0.food.tempSouth <- cvn$exp_food[cvn$year==1987 & cvn$north==0]/cvn$avprice_food[cvn$year==1987 & cvn$north==0]
+q0.fdS <- mean(q0.food.tempSouth)
+#non-food
+q0.nofood.tempSouth <- cvn$exp_othr[cvn$year==1987 & cvn$north==0]/cvn$avprice_othr[cvn$year==1987 & cvn$north==0]
+q0.nofdS <- mean(q0.nofood.tempSouth)
+
+
+#Step2 (price): we can create a variable that equals the different average prices, across the regions and through the years:
+
+##1987:
+#food, North
+p0.fdN <- cvn$avprice_food[cvn$year==1987 & cvn$north==1]
+#non-food, North
+p0.nofdN <- cvn$avprice_othr[cvn$year==1987 & cvn$north==1]
+#food, South
+p0.fdS <- cvn$avprice_food[cvn$year==1987 & cvn$north==0]
+#non-food, South
+p0.nofdS <- cvn$avprice_othr[cvn$year==1987 & cvn$north==0]
+
+##1998
+#food, North
+p1.fdN <- cvn$avprice_food[cvn$year==1998 & cvn$north==1]
+#non-food, North
+p1.nofdN <- cvn$avprice_othr[cvn$year==1998 & cvn$north==1]
+#food, South
+p1.fdS <- cvn$avprice_food[cvn$year==1998 & cvn$north==0]
+#non-nood, South
+p1.nofdS <- cvn$avprice_othr[cvn$year==1998 & cvn$north==0]
+
+##2008 
+#food, North
+p2.fdN <- cvn$avprice_food[cvn$year==2008 & cvn$north==1]
+#non-food, North
+p2.nofdN <- cvn$avprice_othr[cvn$year==2008 & cvn$north==1]
+#food, South
+p2.fdS <- cvn$avprice_food[cvn$year==2008 & cvn$north==0]
+#non-food, South
+p2.nofdS <- cvn$avprice_othr[cvn$year==2008 & cvn$north==0]
+
+
+##Step 3: (Claculating the indeces)
+
+##1987
+#North
+lasp87N <- ((p0.fdN*q0.fdN + p0.nofdN*q0.nofdN)/(p0.fdN*q0.fdN + p0.nofdN*q0.nofdN))*100
+#South
+lasp87S <- ((p0.fdS*q0.fdS + p0.nofdS*q0.nofdS)/(p0.fdS*q0.fdS + p0.nofdS*q0.nofdS))*100
+#equal to 100: check!
+
+#1998
+#North
+lasp98N <- ((p1.fdN*q0.fdN + p1.nofdN*q0.nofdN)/(p0.fdN*q0.fdN + p0.nofdN*q0.nofdN))*100
+#180.1895
+#South
+lasp98S <- ((p1.fdS*q0.fdS + p1.nofdS*q0.nofdS)/(p0.fdS*q0.fdS + p0.nofdS*q0.nofdS))*100
+#192.5145
+
+
+#2008
+#North
+lasp08N <- ((p2.fdN*q0.fdN + p2.nofdN*q0.nofdN)/(p0.fdN*q0.fdN + p0.nofdN*q0.nofdN))*100
+#240.6219
+#South
+lasp08S <- ((p2.fdS*q0.fdS + p2.nofdS*q0.nofdS)/(p0.fdS*q0.fdS + p0.nofdS*q0.nofdS))*100
+#255.7725
+
+
+#### Paasche:
+
+
+##Step1: we have to calculate the quantities for 1998 and 2008 for both food and non-food goods.
+
+##1998
+
+#North:
+q1.food.tempNorth <- cvn$exp_food[cvn$year==1998 & cvn$north==1]/cvn$avprice_food[cvn$year==1998 & cvn$north==1]
+q1.fdN <- mean(q1.food.tempNorth)
+q1.nofood.tempNorth <- cvn$exp_othr[cvn$year==1998 & cvn$north==1]/cvn$avprice_othr[cvn$year==1998 & cvn$north==1]
+q1.nofdN <- mean(q1.nofood.tempNorth)
+
+#South:
+q1.food.tempSouth <- cvn$exp_food[cvn$year==1998 & cvn$north==0]/cvn$avprice_food[cvn$year==1998 & cvn$north==0]
+q1.fdS <- mean(q1.food.tempSouth)
+q1.nofood.tempSouth <- cvn$exp_othr[cvn$year==1998 & cvn$north==0]/cvn$avprice_othr[cvn$year==1998 & cvn$north==0]
+q1.nofdS <- mean(q1.nofood.tempSouth)
+
+
+##2008
+
+#North:
+q2.food.tempNorth <- cvn$exp_food[cvn$year==2008 & cvn$north==1]/cvn$avprice_food[cvn$year==2008 & cvn$north==1]
+q2.fdN <- mean(q2.food.tempNorth)
+q2.nofood.tempNorth <- cvn$exp_othr[cvn$year==2008 & cvn$north==1]/cvn$avprice_othr[cvn$year==2008 & cvn$north==1]
+q2.nofdN <- mean(q2.nofood.tempNorth)
+
+#South:
+q2.food.tempSouth <- cvn$exp_food[cvn$year==2008 & cvn$north==0]/cvn$avprice_food[cvn$year==2008 & cvn$north==0]
+q2.fdS <- mean(q2.food.tempSouth)
+q2.nofood.tempSouth <- cvn$exp_othr[cvn$year==2008 & cvn$north==0]/cvn$avprice_othr[cvn$year==2008 & cvn$north==0]
+q2.nofdS <- mean(q2.nofood.tempSouth)
+
+
+###Step 2 (Calculation) 
+
+##1987
+#North
+paasch87N <- ((p0.fdN*q0.fdN + p0.nofdN*q0.nofdN)/(p0.fdN*q0.fdN + p0.nofdN*q0.nofdN))*100
+#South
+paasch87S <- ((p0.fdS*q0.fdS + p0.nofdS*q0.nofdS)/(p0.fdS*q0.fdS + p0.nofdS*q0.nofdS))*100
+#Equals 100? check!
+
+##1998
+#North
+paasch98N <- ((p1.fdN*q1.fdN + p1.nofdN*q1.nofdN)/(p0.fdN*q1.fdN + p0.nofdN*q1.nofdN))*100
+#180.0835
+#South
+paasch98S <- ((p1.fdS*q1.fdS + p1.nofdS*q1.nofdS)/(p0.fdS*q1.fdS + p0.nofdS*q1.nofdS))*100
+#192.5038
+
+##2008
+#North
+paasch08N <- ((p2.fdN*q2.fdN + p2.nofdN*q2.nofdN)/(p0.fdN*q2.fdN + p0.nofdN*q2.nofdN))*100
+#240.7647
+
+#South
+paasch08S <- ((p2.fdS*q2.fdS + p2.nofdS*q2.nofdS)/(p0.fdS*q2.fdS + p0.nofdS*q2.nofdS))*100
+#255.8119
+```
+
+
+
+
+
+``````{r, include=FALSE}
+#we can use the numbers in the tables.
+
+
+#### Laspeyres :
+
+#1987
+PL87 <- (1005/1215)*cvn$bdgshr_food[cvn$year==1987&cvn$north==0] + (395/705)*cvn$bdgshr_othr[cvn$year==1987 & cvn$north==0]
+#72.90661
+
+#1998
+PL98 <- (1805/2335)*cvn$bdgshr_food[cvn$year==1998&cvn$north==0] + (715/1360)*cvn$bdgshr_othr[cvn$year==1998 & cvn$north==0]
+#68.91458
+
+#2008
+PL08 <- ((2410/3105)*cvn$bdgshr_food[cvn$year==2008&cvn$north==0]+ (955/1805)*cvn$bdgshr_othr[cvn$year==2008&cvn$north==0])
+#66.38775
+
+#### Paasche
+#1987:
+PP87 <- (1005/1215)*cvn$bdgshr_food[cvn$year==1987&cvn$north==1] + (395/705)*cvn$bdgshr_othr[cvn$year==1987 & cvn$north==1]
+#75.15002
+
+
+#1998
+PP98 <- (1805/2335)*cvn$bdgshr_food[cvn$year==1998&cvn$north==1] + (715/1360)*cvn$bdgshr_othr[cvn$year==1998 & cvn$north==1]
+#70.70436
+
+#2008
+PP08 <- ((2410/3105)*cvn$bdgshr_food[cvn$year==2008&cvn$north==1]+ (955/1805)*cvn$bdgshr_othr[cvn$year==2008&cvn$north==1])
+#67.86539
+
+#### Fisher
+
+#By definition, we take the square root of the product of the laspeyres and the paasche PPP index.
+
+#1987
+PF87 <- sqrt(PL87*PP87)
+#74.01982
+
+#1998
+PF98 <- sqrt(PL98*PP98)
+#69.80373
+
+#2008
+PF08 <- sqrt(PL08*PP08) 
+#67.12251
+```
+
+
+
+
+**(d)**
+We must use the following equation.
+
+\[conspc87=consumption \ per \ capita. \frac{PPP}{CPI} \ \]
+
+Dividing the consumption per capita by CPI allows us to compare numbers through the years. Since the purchasing power of the North and the South differ, we have to multiply the reult by PPP. For instance, if 100 CFA franc is worth (in terms of buying goods) 73 in the North, X CFA franc is worth 0.73X in the North. This allows us to compare the regions. Implenting them both will harmonize the data in PPP 1987 franc CFA.
+
+```{r, include=FALSE}
+
+###  we  convert expenditures of north by using ppp of south, and use cpi to make them comparable for different years.
+
+cvn$pppovercpi = ifelse(cvn$north==1, ifelse(cvn$year==1987,0.7291,
+                                         ifelse(cvn$year==1998,0.38283,0.27621)),
+                    ifelse(cvn$year==1987,1,ifelse(cvn$year==1998,0.519655,0.39104)))
+
+cvn$conspc87 <- cvn$conspc*cvn$pppovercpi
+summary(cvn$conspc87)
+
+```
+## 3 Absolute poverty measures (5 points)
+
+**(a)** and **(b)** 
+
+Here, we do not need to convert 273 by using CPI since it is in 1987 franc CFA. However, we need to adjust for PPP. Therefore, we need to have two poverty lines: 237 for the South and 2.73x72.91=172.7967 for the North. We do similar operations for 474 to get the two poverty lines.We expect if we move the poverty line higher, we end up wuth a higher poverty rate.Our computation proves this guess. 
+
+Whether we take 1\$ or 2\$ per day as the threshold, the evolution is similar. At the national level, in the South, and in the North, the poverty is increasing. In particular, the increase in the 1987-1998 has been dramatic. North is always pooerer than the south.
+
+```{r, include=FALSE}
+#### (a) Poverty threshold and poverty headcount rate
+
+#use consp87, that is daily consumption per capita in each year in constant 
+#1987 franc CFA PPP units, thus it can be compared straight forward to the threshold
+#in each year
+
+
+cvn$pvtl <- ifelse(cvn$north==1,172.7967,237)
+
+
+cvn$pvt <- ifelse(cvn$conspc87 < cvn$pvtl, 1, 0)
+#strictly lower because that's what it says in the instruction
+summary(cvn$pvt) #35.31%
+
+### weight=number of people in the household * the weight of the household
+
+cvn$weight3 <- cvn$hhsize * cvn$weight
+
+### poverty headcount rate
+
+##1987
+
+#national level
+weighted.mean(cvn$pvt[cvn$year==1987], cvn$weight3[cvn$year==1987])
+#0.2177264
+
+#North
+weighted.mean(cvn$pvt[cvn$year==1987 & cvn$north==1], cvn$weight3[cvn$year==1987 & cvn$north==1])
+#0.2441773
+
+#South
+weighted.mean(cvn$pvt[cvn$year==1987 & cvn$north==0], cvn$weight3[cvn$year==1987 & cvn$north==0])
+#0.2091977#############
+
+##1998
+
+#national level
+weighted.mean(cvn$pvt[cvn$year==1998], cvn$weight3[cvn$year==1998])
+#0.4419565
+
+#North
+weighted.mean(cvn$pvt[cvn$year==1998 & cvn$north==1], cvn$weight3[cvn$year==1998 & cvn$north==1])
+#0.3891818
+
+#South
+weighted.mean(cvn$pvt[cvn$year==1998 & cvn$north==0], cvn$weight3[cvn$year==1998 & cvn$north==0])
+#0.4579908
+
+##2008
+
+#national level
+weighted.mean(cvn$pvt[cvn$year==2008], cvn$weight3[cvn$year==2008])
+#0.5137161
+
+#North
+weighted.mean(cvn$pvt[cvn$year==2008 & cvn$north==1], cvn$weight3[cvn$year==2008 & cvn$north==1])
+#0.5103651
+
+#South
+weighted.mean(cvn$pvt[cvn$year==2008 & cvn$north==0], cvn$weight3[cvn$year==2008 & cvn$north==0])
+#0.5146762
+
+### illustrate the results (to comment)
+
+```
+
+
+```{r, include=FALSE}
+#### (b) Poverty threshold and poverty headcount rate
+
+
+cvn$pvtl2 <- ifelse(cvn$north==1,345.5934,474)
+
+cvn$pvt2 <- ifelse(cvn$conspc87 < cvn$pvtl2, 1, 0)
+#strictly lower because that's what it says in the instruction
+summary(cvn$pvt2) #69.52%
+
+
+### poverty headcount rate
+
+##1987
+
+#national level
+weighted.mean(cvn$pvt2[cvn$year==1987], cvn$weight3[cvn$year==1987])
+#0.6275064
+
+#North
+weighted.mean(cvn$pvt2[cvn$year==1987 & cvn$north==1], cvn$weight3[cvn$year==1987 & cvn$north==1])
+#0.7616913
+
+#South
+weighted.mean(cvn$pvt2[cvn$year==1987 & cvn$north==0], cvn$weight3[cvn$year==1987 & cvn$north==0])
+#0.6405827
+
+##1998
+
+#national level
+weighted.mean(cvn$pvt2[cvn$year==1998], cvn$weight3[cvn$year==1998])
+#0.8388724
+
+#North
+weighted.mean(cvn$pvt2[cvn$year==1998 & cvn$north==1], cvn$weight3[cvn$year==1998 & cvn$north==1])
+#0.9397613
+
+#South
+weighted.mean(cvn$pvt2[cvn$year==1998 & cvn$north==0], cvn$weight3[cvn$year==1998 & cvn$north==0])
+#0.8082197
+
+##2008
+
+#national level
+weighted.mean(cvn$pvt2[cvn$year==2008], cvn$weight3[cvn$year==2008])
+#0.8511658
+
+#North
+weighted.mean(cvn$pvt2[cvn$year==2008 & cvn$north==1], cvn$weight3[cvn$year==2008 & cvn$north==1])
+# 0.940701
+
+#South
+weighted.mean(cvn$pvt2[cvn$year==2008 & cvn$north==0], cvn$weight3[cvn$year==2008 & cvn$north==0])
+#0.8255128
+
+```
+
+
+**(c)** 
+
+This measure also captures the evolution of poverty we talked about. Comparing the results to part (b), we see that in 1987 for each region, the poverty rates are the same, we are using the same CPI (100 for both north and south), and PPP is 100. Also, the only factor that determines differences poverty in each region is consumption per capita. 
+
+For the years 1998 and 2008, PPP remains 100 but we use the CPI of the south for both regions to account for inflation. For the south, poverty rates are similar because the CPI we used is the same as part a. However, for the North as well as the national level, they change because we are using the CPI of the south. As a result, if the original CPI is larger than the the CPI of the south, poverty rates increase when we use the CPI of the south.However the general trend we explained above holds here as well.
+
+
+
+```{r, include=FALSE}
+###################################################################################
+#### (c) Poverty rate if we do not account for price differences in the north and south
+
+
+### Create a new cpi variable which expands the CPI observed in the South to both regions
+
+
+test <- subset(cvn, select=c(year, north, cpi))
+#in 1987 it is the same anyway (1)
+
+
+cvn$newcpi <- cvn$cpi #for 1987
+  
+cvn$newcpi[cvn$year==1998 & cvn$north==1] <- cvn$cpi[cvn$year==1998 & cvn$north==0]
+cvn$newcpi[cvn$year==2008 & cvn$north==1] <- cvn$cpi[cvn$year==2008 & cvn$north==0]
+
+
+test <- subset(cvn, select=c(year, north, cpi, newcpi, cvn$newconspc87))
+table(cvn$newcpi)
+table(cvn$north,cvn$newcpi)
+#the cpi is the same now for the both regions in each year
+
+### generate a new daily per capita consumption in constant 1987 franc CFA
+
+#as above, divide the consumption value in current prices by the new cpi
+
+cvn$newconspc87[cvn$year==1987] <- cvn$conspc[cvn$year==1987] #for 1987
+
+cvn$newconspc87[cvn$year==1998] <- 100*cvn$conspc[cvn$year==1998]/cvn$newcpi[cvn$year==1998]
+cvn$newconspc87[cvn$year==2008] <- 100*cvn$conspc[cvn$year==2008]/cvn$newcpi[cvn$year==2008]
+
+test <- subset(cvn, select=c(year, north, cpi, newcpi, newconspc87))
+
+
+### now create a poverty dummy for the 1$ threshold as above
+
+cvn$pvt.new <- ifelse(cvn$newconspc87 < 237, 1, 0)
+
+
+### poverty headcount rate
+
+##1987
+
+#national level
+weighted.mean(cvn$pvt.new[cvn$year==1987], cvn$weight3[cvn$year==1987])
+#25.11%, here I transform all the following result notes directly into percent and round them
+
+#North
+weighted.mean(cvn$pvt.new[cvn$year==1987 & cvn$north==1], cvn$weight3[cvn$year==1987 & cvn$north==1])
+#38.11
+
+#South
+weighted.mean(cvn$pvt.new[cvn$year==1987 & cvn$north==0], cvn$weight3[cvn$year==1987 & cvn$north==0])
+#20.92
+
+##1998
+
+#national level
+weighted.mean(cvn$pvt.new[cvn$year==1998], cvn$weight3[cvn$year==1998])
+#51.10
+
+#North
+weighted.mean(cvn$pvt.new[cvn$year==1998 & cvn$north==1], cvn$weight3[cvn$year==1998 & cvn$north==1])
+#68.55
+
+#South
+weighted.mean(cvn$pvt.new[cvn$year==1998 & cvn$north==0], cvn$weight3[cvn$year==1998 & cvn$north==0])
+#45.80
+
+##2008
+
+#national level
+weighted.mean(cvn$pvt.new[cvn$year==2008], cvn$weight3[cvn$year==2008])
+#56.45
+
+#North
+weighted.mean(cvn$pvt.new[cvn$year==2008 & cvn$north==1], cvn$weight3[cvn$year==2008 & cvn$north==1])
+#73.82
+
+#South
+weighted.mean(cvn$pvt.new[cvn$year==2008 & cvn$north==0], cvn$weight3[cvn$year==2008 & cvn$north==0])
+#51.47
+
+
+```
+
+## 4 Growth Incecies Growth
+
+**(a)** and **(b)** 
+  
+We follow the steps.  
+  
+```{r, include=FALSE}
+#### (a) For each year, find the percentiles p of conspc 87
+
+#Use the command ewcdf() in combination with ceiling() and use weights
+#for weights we also have to use weight3 here (hhweight*hhsize) because we are looking at    # the individual level.
+
+cvn$pctl[cvn$year==1987] <- ceiling(100*ewcdf(cvn$conspc87[cvn$year==1987], w=cvn$weight3[cvn$year==1987]/sum(cvn$weight3[cvn$year==1987]))(cvn$conspc87[cvn$year==1987]))
+
+cvn$pctl[cvn$year==1998] <- ceiling(100*ewcdf(cvn$conspc87[cvn$year==1998], w=cvn$weight3[cvn$year==1998]/sum(cvn$weight3[cvn$year==1998]))(cvn$conspc87[cvn$year==1998]))
+            
+cvn$pctl[cvn$year==2008] <-  ceiling(100*ewcdf(cvn$conspc87[cvn$year==2008], w=cvn$weight3[cvn$year==2008]/sum(cvn$weight3[cvn$year==2008]))(cvn$conspc87[cvn$year==2008]))
+
+
+# It is a good idea to reorder the percentiles now. we creat 3 subsets for each year. 
+
+
+test <- subset(cvn, select=c(year, conspc87, pctl))
+#1987
+test87 <- subset(test, year==1987)
+#right order of the percentiles
+#1998
+test98 <- subset(test, year==1998)
+#right order of the percentiles
+#2008
+test08 <- subset(test, year==2008)
+#right order of the percentiles
+
+```
+
+
+```{r, include=FALSE}
+#### (b) Average growth for each percentile (1987-98, 1998-08)
+
+##we can use the ddply command from the plyr package, use mean instead of weighted.mean
+##(we do NOT have to apply the weights twice!)
+
+
+### Step1: create the average consumption in each percentile per year
+
+
+temp <- ddply(cvn, .(year, pctl), function(x) mean(x$conspc87))
+temp <- rename(temp, c(V1="pctl.consum"))
+
+
+
+### Step2: Now we can make our comparisons in each period.
+
+##period 1987-98
+growth8798 <- temp
+growth8798 <- ddply(growth8798, .(pctl), function(x) (x$pctl.consum[x$year==1998]/x$pctl.consum[x$year==1987]))
+growth8798 <- rename(growth8798, c(V1="avg.growth"))
+
+#get the growth rate per year
+growth8798$avg.growth <- ((growth8798$avg.growth)^(1/11) - 1)*100
+#to get the growth rate per period, we have to take the 11th root (11=1998-1987) 
+#and ) and substract 1 to get the growth rate.
+growth87985 <- temp$pctl.consum[temp$year==1998]/temp$pctl.consum[temp$year==1987]
+
+
+##period 1998-08
+
+growth9808 <- temp
+growth9808 <- ddply(growth9808, .(pctl), function(x) (x$pctl.consum[x$year==2008]/x$pctl.consum[x$year==1998]))
+growth9808 <- rename(growth9808, c(V1="avg.growth"))
+growth9808$avg.growth <- ((growth9808$avg.growth)^(1/10) - 1)*100
+
+```
+**(c)** and **(d)** and **(e)**
+
+
+In the 1987-1998 period, average annual growth rates are all negative. from around the 10th percentile, the negative growth rate is similar (roughly -4). However, from 0 to the 10th, the absolute value of average annual growth is smaller, suggesting their consumption did not decrease as much as others. This is specially true for the 2nd and 3rd peecentiles where the graph picks. In the 1998-2008 period, average annual growth rates are mostly negative. Their absolute value increase from 0 to 15th percentile, roughly stagnate from 15th to 95th, and again increase and even become positive at the end. In this case, lower percentiles get poorer, the middle stagnates, and the higher percentiles increase. If we measure inequality in consumption, it is very likely that during the 1998-2008 period, it increases. 
+
+## 5 Lorenz curves (4 points)
+
+
+```{r, include=FALSE}
+## 5 Lorenz Curves
+
+
+#Do NOT forget weights!
+
+#create subsets of the data set for each year (since we shld look at the data
+#for each year seperately)
+
+cvn87 <- subset(cvn, year==1987)
+cvn98 <- subset(cvn, year==1998)
+cvn08 <- subset(cvn, year==2008)
+
+#check
+table(cvn87$year)
+#ok!
+
+
+####1987
+
+### National Level
+
+##sort the data set by individual consumption (from low to high)
+
+cvn87 <- cvn87[order(cvn87$conspc87),]
+
+##give the individuals a rank according to their income (from low to high)
+
+cvn87$rank <- 1:nrow(cvn87)
+
+##create the share of the total sum of consumption that each individual has
+
+#what is the total sum of all consumption values?
+sum(cvn87$conspc87)
+
+cvn87$con.shr <- cvn87$conspc87/sum(cvn87$conspc87)
+#in the data set we see that since it was sorted by the individual consumption
+#it is also ordered according to the individual shares (obviously)
+
+##create the cumulative sum of the shares
+
+cvn87$c.sum87 <- cumsum(cvn87$con.shr)
+
+
+
+### North
+
+##create a data subset that only includes the north
+#check
+
+cvn87N <- subset(cvn, cvn$year==1987 & cvn$north==1)
+#check
+table(cvn87N$north)
+#only 1s, ok!
+
+##create the share of the total sum of consumption that each individual has
+
+#what is the total sum of all consumption values?
+sum(cvn87N$conspc87)
+
+cvn87N$con.shr <- cvn87N$conspc87/sum(cvn87N$conspc87)
+#check
+sum(cvn87N$con.shr)
+#1, ok!
+
+##order the data set by the individual consumption shares (from low to high)
+
+cvn87N <- cvn87N[order(cvn87N$con.shr),]
+#check
+
+##create the cumulative sum of the shares
+
+cvn87N$c.sum87N <- cumsum(cvn87N$con.shr)
+
+#check
+max(cvn87N$c.sum87N)
+#1, ok!
+
+##give the individuals a rank according to their income share (from low to high)
+
+cvn87N$rank <- 1:nrow(cvn87N)
+
+
+### South
+
+##create a data subset that only includes the south
+
+cvn87S <- subset(cvn, cvn$year==1987 & cvn$north==0)
+#check
+table(cvn87S$north)
+#only 0s, ok!
+
+##create the share of the total sum of consumption that each individual has
+
+#what is the total sum of all consumption values?
+sum(cvn87S$conspc87)
+
+cvn87S$con.shr <- cvn87S$conspc87/sum(cvn87S$conspc87)
+#check
+sum(cvn87S$con.shr)
+#1, ok!
+
+##order the data set by the individual consumption shares (from low to high)
+
+cvn87S <- cvn87S[order(cvn87S$con.shr),]
+#check
+
+##create the cumulative sum of the shares
+
+cvn87S$c.sum87S <- cumsum(cvn87S$con.shr)
+
+#check
+max(cvn87S$c.sum87S)
+#1, ok!
+
+##give the individuals a rank according to their income share (from low to high)
+
+cvn87S$rank <- 1:nrow(cvn87S)
+
+
+####1998
+
+### National Level
+
+##sort the data set by individual consumption (from low to high)
+
+cvn98 <- cvn98[order(cvn98$conspc87),]
+
+##give the individuals a rank according to their income (from low to high)
+
+cvn98$rank <- 1:nrow(cvn98)
+
+##create the share of the total sum of consumption that each individual has
+
+#what is the total sum of all consumption values?
+sum(cvn98$conspc87)
+
+cvn98$con.shr <- cvn98$conspc87/sum(cvn98$conspc87)
+#in the data set we see that since it was sorted by the individual consumption
+#it is also ordered according to the individual shares (obviously)
+
+##create the cumulative sum of the shares
+
+cvn98$c.sum98 <- cumsum(cvn98$con.shr)
+
+#check
+max(cvn98$c.sum98)
+#1, ok!
+
+
+
+### North
+
+##create a data subset that only includes the north
+
+cvn98N <- subset(cvn, cvn$year==1998 & cvn$north==1)
+#check
+table(cvn98N$north)
+#only 1s, ok!
+
+##create the share of the total sum of consumption that each individual has
+
+#what is the total sum of all consumption values?
+sum(cvn98N$conspc87)
+
+cvn98N$con.shr <- cvn98N$conspc87/sum(cvn98N$conspc87)
+#check
+sum(cvn98N$con.shr)
+#1, ok!
+
+##order the data set by the individual consumption shares (from low to high)
+
+cvn98N <- cvn98N[order(cvn98N$con.shr),]
+#check
+
+##create the cumulative sum of the shares
+
+cvn98N$c.sum98N <- cumsum(cvn98N$con.shr)
+
+#check
+max(cvn98N$c.sum98N)
+#1, ok!
+
+##give the individuals a rank according to their income share (from low to high)
+
+cvn98N$rank <- 1:nrow(cvn98N)
+
+
+### South
+
+##create a data subset that only includes the south
+
+cvn98S <- subset(cvn, cvn$year==1998 & cvn$north==0)
+#check
+table(cvn98S$north)
+#only 0s, ok!
+
+##create the share of the total sum of consumption that each individual has
+
+#what is the total sum of all consumption values?
+sum(cvn98S$conspc87)
+
+cvn98S$con.shr <- cvn98S$conspc87/sum(cvn98S$conspc87)
+#check
+sum(cvn98S$con.shr)
+#1, ok!
+
+##order the data set by the individual consumption shares (from low to high)
+
+cvn98S <- cvn98S[order(cvn98S$con.shr),]
+#check
+
+##create the cumulative sum of the shares
+
+cvn98S$c.sum98S <- cumsum(cvn98S$con.shr)
+
+#check
+max(cvn98S$c.sum98S)
+#1, ok!
+
+##give the individuals a rank according to their income share (from low to high)
+
+cvn98S$rank <- 1:nrow(cvn98S)
+
+
+
+####2008
+
+### National Level
+
+##sort the data set by individual consumption (from low to high)
+
+cvn08 <- cvn08[order(cvn08$conspc87),]
+
+##give the individuals a rank according to their income (from low to high)
+
+cvn08$rank <- 1:nrow(cvn08)
+
+##create the share of the total sum of consumption that each individual has
+
+#what is the total sum of all consumption values?
+sum(cvn08$conspc87)
+
+cvn08$con.shr <- cvn08$conspc87/sum(cvn08$conspc87)
+#in the data set we see that since it was sorted by the individual consumption
+#it is also ordered according to the individual shares (obviously)
+
+##create the cumulative sum of the shares
+
+cvn08$c.sum08 <- cumsum(cvn08$con.shr)
+
+#check
+max(cvn08$c.sum08)
+#1, ok!
+
+
+
+### North
+
+##create a data subset that only includes the north
+
+cvn08N <- subset(cvn, cvn$year==2008 & cvn$north==1)
+#check
+table(cvn08N$north)
+#only 1s, ok!
+
+##create the share of the total sum of consumption that each individual has
+
+#what is the total sum of all consumption values?
+sum(cvn08N$conspc87)
+
+cvn08N$con.shr <- cvn08N$conspc87/sum(cvn08N$conspc87)
+#check
+sum(cvn08N$con.shr)
+#1, ok!
+
+##order the data set by the individual consumption shares (from low to high)
+
+cvn08N <- cvn08N[order(cvn08N$con.shr),]
+#check
+
+##create the cumulative sum of the shares
+
+cvn08N$c.sum08N <- cumsum(cvn08N$con.shr)
+
+#check
+max(cvn08N$c.sum08N)
+#1, ok!
+
+##give the individuals a rank according to their income share (from low to high)
+
+cvn08N$rank <- 1:nrow(cvn08N)
+
+
+### South
+
+##create a data subset that only includes the south
+
+cvn08S <- subset(cvn, cvn$year==2008 & cvn$north==0)
+#check
+table(cvn08S$north)
+#only 0s, ok!
+
+##create the share of the total sum of consumption that each individual has
+
+#what is the total sum of all consumption values?
+sum(cvn08S$conspc87)
+
+cvn08S$con.shr <- cvn08S$conspc87/sum(cvn08S$conspc87)
+#check
+sum(cvn08S$con.shr)
+#1, ok!
+
+##order the data set by the individual consumption shares (from low to high)
+
+cvn08S <- cvn08S[order(cvn08S$con.shr),]
+#check
+
+##create the cumulative sum of the shares
+
+cvn08S$c.sum08S <- cumsum(cvn08S$con.shr)
+
+#check
+max(cvn08S$c.sum08S)
+#1, ok!
+
+##give the individuals a rank according to their income share (from low to high)
+
+cvn08S$rank <- 1:nrow(cvn08S)
+##################################################################################
+```
+
+```{r, include=FALSE}
+
+
+#NOTE: -> with the percentiles we can also include weights 2 times,
+#once when we create the percentiles
+#once when taking the weighted mean to get one value for each percentile
+
+####1987
+
+### National Level
+
+##for the national level we can use the percentiles which we created before for each year
+
+##we also already have the cumulated sum
+
+##now we have to create the weighted mean of the cumulated sum for each percentile
+##to obtain exactly one value for each percentile
+
+Lor87 <- ddply(cvn87, .(pctl), function(x) weighted.mean(x$c.sum87, x$weight3))
+Lor87 <- rename(Lor87, c(V1="wght.pctl.c.sum87"))
+
+##plot it
+
+#x-axis: percentiles of individuals
+#y-axis: cumulated shares of these individuals of the total consumption in CÃ´te d'Ivoire
+
+
+plot(Lor87$pctl, Lor87$wght.pctl.c.sum87, type="l", xlab="Population (from Poorest to Richest)", ylab="National Daily Consumption", col="blue", main="Daily per Capita Consumption-Lorenz Curve 1987")
+
+
+### North
+
+##create the new percentiles
+
+cvn87N$pctlN <- ceiling(100*ewcdf(cvn87N$conspc87, w=cvn87N$weight3/sum(cvn87N$weight3))(cvn87N$conspc87))
+
+#check
+test <- subset(cvn87N, select=c(conspc87,pctlN))
+ #percentiles in the right order after ordering the data set from low
+           #comsumption to high consumption
+
+##we already have the cumulated sum
+
+##create the weighted mean of the cumulated sum for each percentile
+
+Lor87N <- ddply(cvn87N, .(pctlN), function(x) weighted.mean(x$c.sum87N, x$weight3))
+Lor87N <- rename(Lor87N, c(V1="wght.pctl.c.sum87N"))
+##Note that we are missing one percentile!
+
+##plot it
+
+#x-axis: percentiles of individuals
+#y-axis: cumulated shares of these individuals of the total consumption in CÃ´te d'Ivoire
+
+plot(Lor87N$pctlN, Lor87N$wght.pctl.c.sum87N)
+
+
+### South
+
+##create the new percentiles
+
+cvn87S$pctlS <- ceiling(100*ewcdf(cvn87S$conspc87, w=cvn87S$weight3/sum(cvn87S$weight3))(cvn87S$conspc87))
+
+#check
+test <- subset(cvn87S, select=c(conspc87,pctlS))
+ #percentiles in the right order after ordering the data set from low
+#comsumption to high consumption
+
+##we already have the cumulated sum
+
+##create the weighted mean of the cumulated sum for each percentile
+
+Lor87S <- ddply(cvn87S, .(pctlS), function(x) weighted.mean(x$c.sum87S, x$weight3))
+Lor87S <- rename(Lor87S, c(V1="wght.pctl.c.sum87S"))
+
+##plot it
+
+#x-axis: percentiles of individuals
+#y-axis: cumulated shares of these individuals of the total consumption in CÃ´te d'Ivoire
+
+plot(Lor87S$pctlS, Lor87S$wght.pctl.c.sum87S)
+
+
+### plot all of them in one graph!
+
+plot(Lor87$pctl, Lor87$wght.pctl.c.sum87, type="l", xlab="Population (from Poorest to Richest)", ylab="National Daily Consumption", col="blue", main="Daily per Capita Consumption-Lorenz Curves 1987")
+lines(Lor87N$pctlN, Lor87N$wght.pctl.c.sum87N, col="green")
+lines(Lor87S$pctlS, Lor87S$wght.pctl.c.sum87S, col="red")
+abline(a=0, b=0.01)
+
+legend(x=10, y=0.9, legend=c("national level", "North", "South"),
+       col=c("blue", "green", "red"), lty=1, cex=0.7)
+
+
+####1998
+
+### National Level
+
+##we can use the percentiles which we created before for each year
+
+##we also already have the cumulated sum
+
+##create the weighted mean of the cumulated sum for each percentile
+
+Lor98 <- ddply(cvn98, .(pctl), function(x) weighted.mean(x$c.sum98, x$weight3))
+Lor98 <- rename(Lor98, c(V1="wght.pctl.c.sum98"))
+
+##plot it
+
+#x-axis: percentiles of individuals
+#y-axis: cumulated shares of these individuals of the total consumption in CÃ´te d'Ivoire
+
+plot(Lor98$pctl, Lor98$wght.pctl.c.sum98)
+
+
+### North
+
+##create the new percentiles
+
+cvn98N$pctlN <- ceiling(100*ewcdf(cvn98N$conspc87, w=cvn98N$weight3/sum(cvn98N$weight3))(cvn98N$conspc87))
+
+#check
+test <- subset(cvn98N, select=c(conspc87,pctlN))
+#percentiles in the right order after ordering the data set from low
+#comsumption to high consumption
+
+##we already have the cumulated sum
+
+##create the weighted mean of the cumulated sum for each percentile
+
+Lor98N <- ddply(cvn98N, .(pctlN), function(x) weighted.mean(x$c.sum98N, x$weight3))
+Lor98N <- rename(Lor98N, c(V1="wght.pctl.c.sum98N"))
+
+##plot it
+
+#x-axis: percentiles of individuals
+#y-axis: cumulated shares of these individuals of the total consumption in CÃ´te d'Ivoire
+
+plot(Lor98N$pctlN, Lor98N$wght.pctl.c.sum98N)
+
+
+### South
+
+##create the new percentiles
+
+cvn98S$pctlS <- ceiling(100*ewcdf(cvn98S$conspc87, w=cvn98S$weight3/sum(cvn98S$weight3))(cvn98S$conspc87))
+
+#check
+test <- subset(cvn98S, select=c(conspc87,pctlS))
+ #percentiles in the right order after ordering the data set from low
+#comsumption to high consumption
+
+##we already have the cumulated sum
+
+##create the weighted mean of the cumulated sum for each percentile
+
+Lor98S <- ddply(cvn98S, .(pctlS), function(x) weighted.mean(x$c.sum98S, x$weight3))
+Lor98S <- rename(Lor98S, c(V1="wght.pctl.c.sum98S"))
+
+##plot it
+
+#x-axis: percentiles of individuals
+#y-axis: cumulated shares of these individuals of the total consumption in CÃ´te d'Ivoire
+
+plot(Lor98S$pctlS, Lor98S$wght.pctl.c.sum98S)
+
+### plot all of them in one graph!
+
+plot(Lor98$pctl, Lor98$wght.pctl.c.sum98, type="l", xlab="Population (from Poorest to Richest)", ylab="National Daily Consumption", col="blue", main="Daily per Capita Consumption-Lorenz Curves 1998")
+lines(Lor98N$pctlN, Lor98N$wght.pctl.c.sum98N, col="green")
+lines(Lor98S$pctlS, Lor98S$wght.pctl.c.sum98S, col="red")
+abline(a=0, b=0.01)
+
+legend(x=10, y=0.9, legend=c("national level", "North", "South"),
+       col=c("blue", "green", "red"), lty=1, cex=0.7)
+
+
+####2008
+
+##we can use the percentiles which we created before for each year
+
+##we also already have the cumulated sum
+
+##create the weighted mean of the cumulated sum for each percentile
+
+Lor08 <- ddply(cvn08, .(pctl), function(x) weighted.mean(x$c.sum08, x$weight3))
+Lor08 <- rename(Lor08, c(V1="wght.pctl.c.sum08"))
+
+##plot it
+
+#x-axis: percentiles of individuals
+#y-axis: cumulated shares of these individuals of the total consumption in CÃ´te d'Ivoire
+
+plot(Lor08$pctl, Lor08$wght.pctl.c.sum08)
+
+
+### North
+
+##create the new percentiles
+
+cvn08N$pctlN <- ceiling(100*ewcdf(cvn08N$conspc87, w=cvn08N$weight3/sum(cvn08N$weight3))(cvn08N$conspc87))
+
+#check
+test <- subset(cvn08N, select=c(conspc87,pctlN))
+#percentiles in the right order after ordering the data set from low
+#comsumption to high consumption
+
+##we already have the cumulated sum
+
+##create the weighted mean of the cumulated sum for each percentile
+
+Lor08N <- ddply(cvn08N, .(pctlN), function(x) weighted.mean(x$c.sum08N, x$weight3))
+Lor08N <- rename(Lor08N, c(V1="wght.pctl.c.sum08N"))
+
+##plot it
+
+#x-axis: percentiles of individuals
+#y-axis: cumulated shares of these individuals of the total consumption in CÃ´te d'Ivoire
+
+plot(Lor08N$pctlN, Lor08N$wght.pctl.c.sum08N)
+
+
+### South
+
+##create the new percentiles
+
+cvn08S$pctlS <- ceiling(100*ewcdf(cvn08S$conspc87, w=cvn08S$weight3/sum(cvn08S$weight3))(cvn08S$conspc87))
+
+#check
+test <- subset(cvn08S, select=c(conspc87,pctlS))
+#percentiles in the right order after ordering the data set from low
+#comsumption to high consumption
+
+##we already have the cumulated sum
+
+##create the weighted mean of the cumulated sum for each percentile
+
+Lor08S <- ddply(cvn08S, .(pctlS), function(x) weighted.mean(x$c.sum08S, x$weight3))
+Lor08S <- rename(Lor08S, c(V1="wght.pctl.c.sum08S"))
+
+##plot it
+
+#x-axis: percentiles of individuals
+#y-axis: cumulated shares of these individuals of the total consumption in CÃ´te d'Ivoire
+
+plot(Lor08S$pctlS, Lor08S$wght.pctl.c.sum08S)
+
+
+### plot all of them in one graph!
+
+plot(Lor08$pctl, Lor08$wght.pctl.c.sum08, type="l", xlab="Population (from Poorest to Richest)", ylab="National Daily Consumption", col="blue", main="Daily per Capita Consumption-Lorenz Curves 2008")
+lines(Lor08N$pctlN, Lor08N$wght.pctl.c.sum08N, col="green")
+lines(Lor08S$pctlS, Lor08S$wght.pctl.c.sum08S, col="red")
+abline(a=0, b=0.01)
+
+
+legend(x=10, y=0.9, legend=c("national level", "North", "South"),
+       col=c("blue", "green", "red"), lty=1, cex=0.7)
+
+#### (b) Do the Lorenz Curves cross?
+
+
+# use pairwise differences and check if the sign changes at some point
+
+#create a data set with 100 percentiles
+cross <- Lor87
+cross$wght.pctl.c.sum87 <- NULL
+View(cross)
+
+###compare national level
+
+##1987 and 1998
+
+#we can just create the pairwise differences and check if there is a change in signs
+#(i.e. are all values positive/negative or is there a change?)
+cross$dif87_98 <- Lor87$wght.pctl.c.sum87 - Lor98$wght.pctl.c.sum98
+#there is a change here in the lower percentiles
+
+#similarly, we can create a dummy that indicates a change
+cross$dif87_98 <- ifelse(Lor87$wght.pctl.c.sum87 - Lor98$wght.pctl.c.sum98 > 0, 1, 0)
+#then table to see if there are both ones and zeros
+table(cross$dif87_98)
+#yes
+
+
+##1987 and 2008
+
+cross$dif87_08 <- ifelse(Lor87$wght.pctl.c.sum87 - Lor08$wght.pctl.c.sum08 > 0, 1, 0)
+#then table to see if there are both ones and zeros
+table(cross$dif87_08)
+#no
+
+##1998 and 2008
+
+cross$dif98_08 <- ifelse(Lor98$wght.pctl.c.sum98 - Lor08$wght.pctl.c.sum08 > 0, 1, 0)
+#then table to see if there are both ones and zeros
+table(cross$dif98_08)
+#no
+
+### compare North and South within years
+
+##1987
+
+cross$dif87NS <- ifelse(Lor87N$wght.pctl.c.sum87N - Lor87S$wght.pctl.c.sum87S > 0, 1, 0)
+#then table to see if there are both ones and zeros
+table(cross$dif87NS)
+#yes
+#Take care in this case because 87N has one missing percentile
+
+##1998
+
+cross$dif98NS <- ifelse(Lor98N$wght.pctl.c.sum98N - Lor98S$wght.pctl.c.sum98S > 0, 1, 0)
+#then table to see if there are both ones and zeros
+table(cross$dif98NS)
+#yes
+
+##2008
+
+cross$dif08NS <- ifelse(Lor08N$wght.pctl.c.sum08N - Lor08S$wght.pctl.c.sum08S > 0, 1, 0)
+#then table to see if there are both ones and zeros
+table(cross$dif08NS)
+#no
+
+
+```
+
+**(a)** and **(b)** 
+
+Th area bellow the Lorenz curve has a positive relationship with inequality. We use it in the computation of the most famous measurement of inequality, namely the Gini coefficient. In every period, the North has been more unequal than the south. Also, as we saw above, higher percentage of the population are in poverty in comparison to south. Thw lorenz curve of the south is almost the same as the curve at the national level. However, the curve of the north changes during the period. We see a reduction in inequality from 1987 to 1998, but a large increase from 1998 to 2008. This is largely due to the civil war in that period.
+
+The curves do not cross at the national level. if we look at the last graph, we see that the the lorenz curves are extremly close to each other. Therefore, we can say that the level of inequality in 1987, 1998 and 2008 are the same. 
+
+
+
+# Part 2: Graphs and Tables
+
+```{r, echo=FALSE}
+#2008
+hist(cv$consindv[cvn$year==2008], breaks=1000, xlim=c(0,5000), col = "blue", xlab = "Daily per capita Consumption", main = "Individual Consumption Distribution 2008")
+#skewed to the right
+
+hist(cv$consindvlg[cvn$year==2008], col = "blue",  xlab = "Logarithm of Daily per capity Consumption", main = "Log Individual Consumption Distribution 2008")
+#looks normal
+```
+
+```{r, echo=FALSE}
+plot(growth8798$pctl, growth8798$avg.growth, type="l", main="GICs for 1987-1998 and 1998-2008", ylab="Average Annual Growth Rate", xlab="Consumption Percentiles", ylim = c(-8, 8), col="green")
+lines(growth9808$pctl, growth9808$avg.growth, col="orange")
+legend(x=60, y=4.5, c("1987-1998","1998-2008"), col=c("green", "orange"), lty=1, cex=0.7)
+
+```
+
+
+```{r, echo=FALSE}
+#### (a) Lorenz Curves for consumption
+
+## we already have the percentiles and cumulated sum from question 4 on the national level. 
+##now we create the weighted mean of the cumulated sum for each percentile in each region.
+
+
+####Creating percentiles for 1987:
+
+### National Level
+Lor87 <- ddply(cvn87, .(pctl), function(x) weighted.mean(x$c.sum87, x$weight3))
+Lor87 <- rename(Lor87, c(V1="wght.pctl.c.sum87"))
+
+
+### North
+cvn87N$pctlN <- ceiling(100*ewcdf(cvn87N$conspc87, w=cvn87N$weight3/sum(cvn87N$weight3))(cvn87N$conspc87))
+
+
+Lor87N <- ddply(cvn87N, .(pctlN), function(x) weighted.mean(x$c.sum87N, x$weight3))
+Lor87N <- rename(Lor87N, c(V1="wght.pctl.c.sum87N"))
+
+
+### South
+
+##create the new percentiles
+cvn87S$pctlS <- ceiling(100*ewcdf(cvn87S$conspc87, w=cvn87S$weight3/sum(cvn87S$weight3))(cvn87S$conspc87))
+
+Lor87S <- ddply(cvn87S, .(pctlS), function(x) weighted.mean(x$c.sum87S, x$weight3))
+Lor87S <- rename(Lor87S, c(V1="wght.pctl.c.sum87S"))
+
+
+### plotting.
+
+plot(Lor87$pctl, Lor87$wght.pctl.c.sum87, type="l", xlab="Population (from Poorest to Richest)", ylab="National Daily Consumption", col="blue", main="Daily per Capita Consumption-Lorenz Curves 1987")
+lines(Lor87N$pctlN, Lor87N$wght.pctl.c.sum87N, col="orange")
+lines(Lor87S$pctlS, Lor87S$wght.pctl.c.sum87S, col="green")
+abline(a=0, b=0.01)
+
+legend(x=10, y=0.9, legend=c("National", "North", "South"),
+       col=c("blue", "orange", "green"), lty=1, cex=0.7)
+
+
+####1998
+
+### National Level
+
+Lor98 <- ddply(cvn98, .(pctl), function(x) weighted.mean(x$c.sum98, x$weight3))
+Lor98 <- rename(Lor98, c(V1="wght.pctl.c.sum98"))
+
+
+### North
+
+##create the new percentiles
+
+cvn98N$pctlN <- ceiling(100*ewcdf(cvn98N$conspc87, w=cvn98N$weight3/sum(cvn98N$weight3))(cvn98N$conspc87))
+
+
+##create the weighted mean of the cumulated sum for each percentile
+
+Lor98N <- ddply(cvn98N, .(pctlN), function(x) weighted.mean(x$c.sum98N, x$weight3))
+Lor98N <- rename(Lor98N, c(V1="wght.pctl.c.sum98N"))
+
+
+
+### South
+
+##create the new percentiles
+
+cvn98S$pctlS <- ceiling(100*ewcdf(cvn98S$conspc87, w=cvn98S$weight3/sum(cvn98S$weight3))(cvn98S$conspc87))
+
+
+##we already have the cumulated sum
+
+##create the weighted mean of the cumulated sum for each percentile
+
+Lor98S <- ddply(cvn98S, .(pctlS), function(x) weighted.mean(x$c.sum98S, x$weight3))
+Lor98S <- rename(Lor98S, c(V1="wght.pctl.c.sum98S"))
+
+### plotting
+
+plot(Lor98$pctl, Lor98$wght.pctl.c.sum98, type="l", xlab="Population (from Poorest to Richest)", ylab="National Daily Consumption", col="blue", main="Daily per Capita Consumption-Lorenz Curves 1998")
+lines(Lor98N$pctlN, Lor98N$wght.pctl.c.sum98N, col="orange")
+lines(Lor98S$pctlS, Lor98S$wght.pctl.c.sum98S, col="green")
+abline(a=0, b=0.01)
+
+legend(x=10, y=0.9, legend=c("national level", "North", "South"),
+       col=c("blue", "orange", "green"), lty=1, cex=0.7)
+
+
+####2008
+
+
+##create the weighted mean of the cumulated sum for each percentile
+
+Lor08 <- ddply(cvn08, .(pctl), function(x) weighted.mean(x$c.sum08, x$weight3))
+Lor08 <- rename(Lor08, c(V1="wght.pctl.c.sum08"))
+
+
+### North
+
+##create the new percentiles
+
+cvn08N$pctlN <- ceiling(100*ewcdf(cvn08N$conspc87, w=cvn08N$weight3/sum(cvn08N$weight3))(cvn08N$conspc87))
+
+##create the weighted mean of the cumulated sum for each percentile
+
+Lor08N <- ddply(cvn08N, .(pctlN), function(x) weighted.mean(x$c.sum08N, x$weight3))
+Lor08N <- rename(Lor08N, c(V1="wght.pctl.c.sum08N"))
+
+
+
+### South
+
+##create the new percentiles
+
+cvn08S$pctlS <- ceiling(100*ewcdf(cvn08S$conspc87, w=cvn08S$weight3/sum(cvn08S$weight3))(cvn08S$conspc87))
+
+##we already have the cumulated sum
+
+##create the weighted mean of the cumulated sum for each percentile
+
+Lor08S <- ddply(cvn08S, .(pctlS), function(x) weighted.mean(x$c.sum08S, x$weight3))
+Lor08S <- rename(Lor08S, c(V1="wght.pctl.c.sum08S"))
+
+
+
+### plotting
+
+plot(Lor08$pctl, Lor08$wght.pctl.c.sum08, type="l", xlab="Population (from Poorest to Richest)", ylab="National Daily Consumption", col="blue", main="Daily per Capita Consumption-Lorenz Curves 2008")
+lines(Lor08N$pctlN, Lor08N$wght.pctl.c.sum08N, col="orange")
+lines(Lor08S$pctlS, Lor08S$wght.pctl.c.sum08S, col="green")
+abline(a=0, b=0.01)
+
+
+legend(x=10, y=0.9, legend=c("national level", "North", "South"),
+       col=c("blue", "orange", "green"), lty=1, cex=0.7)
+
+
+```
+
+
+```{r, echo=FALSE}
+
+##Plot all three national curves into one graph:
+
+plot(Lor87$pctl, Lor87$wght.pctl.c.sum87, type="l", xlab="Population (from Poorest to Richest)", ylab="National Daily Consumption", col="blue", main="Daily per Capita Consumption-Lorenz Curves in 1987, 1998 and 2008")
+lines(Lor98$pctl, Lor98$wght.pctl.c.sum98, col="green")
+lines(Lor98S$pctlS, Lor98S$wght.pctl.c.sum98S, col="red")
+abline(a=0, b=0.01)
+
+
+legend(x=10, y=0.9, legend=c("1987", "1998", "2008"),
+       col=c("blue", "green", "red"), lty=1, cex=0.7)
+
+
+```
+
+\newpage
+
+|                              	| 1987 	| 1998  	| 2008  	|
+|------------------------------	|------	|-------	|-------	|
+| North                        	|      	|       	|       	|
+| Food                         	| 0.72 	| 0.73  	| 0.61  	|
+| Non-food                     	| 0.28 	| 0.27  	| 0.39  	|
+| number of observations       	| 396  	| 969   	| 3597  	|
+| South                        	|      	|       	|       	|
+| Food                         	| 0.63 	| 0.66  	| 0.55  	|
+| Non-food                     	| 0.37 	| 0.34  	| 0.45  	|
+| number of observation        	| 1188 	| 31182 	| 8791  	|
+| Total Number of Observations 	| 1584 	| 4115  	| 12388 	|
+
+
+|     	|   	|  1987 	|       	|  1998  	|        	|  2008  	|        	|
+|:---:	|:-:	|:-----:	|:-----:	|:------:	|:------:	|:------:	|:------:	|
+|     	|   	| North 	| South 	|  North 	|  South 	|  North 	|  South 	|
+| PPP 	| L 	| 72.90 	|  100  	|  68.91 	|   100  	|  66.38 	|   100  	|
+|     	| P 	| 75.15 	|  100  	|  70.7  	|   100  	|  67.86 	|   100  	|
+|     	| F 	| 74.01 	|  100  	|  69.8  	|   100  	|  67.12 	|   100  	|
+| CPI 	| L 	| 100   	| 100   	| 180.18 	| 192.51 	| 240.62 	| 255.77 	|
+|     	| P 	| 100   	| 100   	| 180.08 	| 192.50 	| 240.76 	| 255.81 	|
+
+
+|              	|                                     	|  1987  	|        	|          	|  1998  	|        	|          	|  2008  	|        	|        	|
+|:------------:	|:-----------------------------------:	|:------:	|:------:	|:--------:	|:------:	|:------:	|:--------:	|:------:	|:------:	|:------:	|
+| Poverty Line 	|                                     	|  North 	|  South 	| National 	|  North 	|  South 	| National 	|  North 	|  1998  	|  2008  	|
+|      237     	| Price levels and preferences differ 	| 38.11% 	| 20.91% 	|  25.11%  	| 67.78% 	| 45.79% 	|  50.92%  	| 75.23% 	| 51.46% 	| 56.76% 	|
+|              	|              Otherwise              	| 38.11% 	| 29.91% 	|  25.11%  	| 68.55% 	| 45.79% 	|  51.10%  	| 73.82% 	| 51.46% 	| 56.44% 	|
+|              	|        Number of observations       	|   396  	|   969  	|   3597   	|   396  	|   969  	|   3597   	|   396  	|   969  	|  3597  	|
+|      474     	| Price levels and preferences differ 	| 76.16% 	| 64.05% 	|  67.01%  	| 93.97% 	| 80.82% 	|  83.88%  	| 94.07% 	| 82.55% 	| 85.11% 	|
+|              	|        Number of observations       	|  1188  	|  3182  	|   8791   	|  1188  	|  3182  	|   8791   	|  1188  	|  3182  	|  8791  	|
+|              	|     Total number of observations    	|  1584  	|  4151  	|   12388  	|  1584  	|  4151  	|   12388  	|  1584  	|  4151  	|  12388 	|
+
+
+
+
+ 
+
+
+
